@@ -21,7 +21,7 @@ func (f Filter) MayContain(key []byte) bool {
 		return true
 	}
 	nBits := uint32(8 * (len(f) - 1))
-	h := hash(key)
+	h := Hash(key)
 	delta := h>>17 | h<<15
 	for j := uint8(0); j < k; j++ {
 		bitPos := h % nBits
@@ -38,11 +38,12 @@ func (f Filter) MayContain(key []byte) bool {
 //
 // A good bitsPerKey value is 10, which yields a filter with ~ 1% false
 // positive rate.
-func NewFilter(buf []byte, keys [][]byte, bitsPerKey int) Filter {
-	return Filter(appendFilter(nil, keys, bitsPerKey))
+func NewFilter(keys []uint32, bitsPerKey int) Filter {
+	return Filter(appendFilter(keys, bitsPerKey))
 }
 
-func appendFilter(buf []byte, keys [][]byte, bitsPerKey int) []byte {
+func appendFilter(keys []uint32, bitsPerKey int) []byte {
+	var buf []byte
 	if bitsPerKey < 0 {
 		bitsPerKey = 0
 	}
@@ -65,8 +66,7 @@ func appendFilter(buf []byte, keys [][]byte, bitsPerKey int) []byte {
 	nBits = nBytes * 8
 	buf, filter := extend(buf, nBytes+1)
 
-	for _, key := range keys {
-		h := hash(key)
+	for _, h := range keys {
 		delta := h>>17 | h<<15
 		for j := uint32(0); j < k; j++ {
 			bitPos := h % uint32(nBits)
@@ -103,7 +103,7 @@ func extend(b []byte, n int) (overall, trailer []byte) {
 }
 
 // hash implements a hashing algorithm similar to the Murmur hash.
-func hash(b []byte) uint32 {
+func Hash(b []byte) uint32 {
 	const (
 		seed = 0xbc9f1d34
 		m    = 0xc6a4a793
@@ -137,22 +137,23 @@ func hash(b []byte) uint32 {
 //
 // It is valid to use the other API in this package (leveldb/bloom) without
 // using this type or the leveldb/db package.
-type FilterPolicy int
 
-// Name implements the db.FilterPolicy interface.
-func (p FilterPolicy) Name() string {
-	// This string looks arbitrary, but its value is written to LevelDB .ldb
-	// files, and should be this exact value to be compatible with those files
-	// and with the C++ LevelDB code.
-	return "leveldb.BuiltinBloomFilter2"
-}
+// type FilterPolicy int
 
-// AppendFilter implements the db.FilterPolicy interface.
-func (p FilterPolicy) AppendFilter(dst []byte, keys [][]byte) []byte {
-	return appendFilter(dst, keys, int(p))
-}
+// // Name implements the db.FilterPolicy interface.
+// func (p FilterPolicy) Name() string {
+// 	// This string looks arbitrary, but its value is written to LevelDB .ldb
+// 	// files, and should be this exact value to be compatible with those files
+// 	// and with the C++ LevelDB code.
+// 	return "leveldb.BuiltinBloomFilter2"
+// }
 
-// MayContain implements the db.FilterPolicy interface.
-func (p FilterPolicy) MayContain(filter, key []byte) bool {
-	return Filter(filter).MayContain(key)
-}
+// // AppendFilter implements the db.FilterPolicy interface.
+// func (p FilterPolicy) AppendFilter(dst []byte, keys [][]byte) []byte {
+// 	return appendFilter(dst, keys, int(p))
+// }
+
+// // MayContain implements the db.FilterPolicy interface.
+// func (p FilterPolicy) MayContain(filter, key []byte) bool {
+// 	return Filter(filter).MayContain(key)
+// }

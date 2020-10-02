@@ -23,10 +23,15 @@ func (f Filter) String() string {
 }
 
 func TestSmallBloomFilter(t *testing.T) {
-	f := NewFilter(nil, [][]byte{
+	var hash []uint32
+	for _, word := range [][]byte{
 		[]byte("hello"),
 		[]byte("world"),
-	}, 10)
+	} {
+		hash = append(hash, Hash(word))
+	}
+
+	f := NewFilter(hash, 10)
 	got := f.String()
 	// The magic want string comes from running the C++ leveldb code's bloom_test.cc.
 	want := "1...1.........1.........1.....1...1...1.....1.........1.....1....11....."
@@ -77,7 +82,11 @@ loop:
 		for i := 0; i < length; i++ {
 			keys = append(keys, le32(i))
 		}
-		f := NewFilter(nil, keys, 10)
+		var hashes []uint32
+		for _, key := range keys {
+			hashes = append(hashes, Hash(key))
+		}
+		f := NewFilter(hashes, 10)
 
 		if len(f) > (length*10/8)+40 {
 			t.Errorf("length=%d: len(f)=%d is too large", length, len(f))
@@ -131,7 +140,7 @@ func TestHash(t *testing.T) {
 		{"I had a dream it would end this way.", 0xe14a9db9},
 	}
 	for _, tc := range testCases {
-		if got := hash([]byte(tc.s)); got != tc.want {
+		if got := Hash([]byte(tc.s)); got != tc.want {
 			t.Errorf("s=%q: got 0x%08x, want 0x%08x", tc.s, got, tc.want)
 		}
 	}
