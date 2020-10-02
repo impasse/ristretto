@@ -11,7 +11,7 @@ import (
 var (
 	wordlist1 [][]byte
 	n         = 1 << 16
-	bf        *Bloom
+	bf        *Bloom2
 )
 
 func TestMain(m *testing.M) {
@@ -29,11 +29,11 @@ func TestMain(m *testing.M) {
 }
 
 func TestM_NumberOfWrongs(t *testing.T) {
-	bf = NewBloomFilter(float64(n*10), float64(7))
+	bf = NewBloomFilter2(float64(n*10), float64(7))
 
 	cnt := 0
 	for i := range wordlist1 {
-		hash := MemHash(wordlist1[i])
+		hash := hash(wordlist1[i])
 		if !bf.AddIfNotHas(hash) {
 			cnt++
 		}
@@ -45,11 +45,11 @@ func TestM_NumberOfWrongs(t *testing.T) {
 func TestM_JSON(t *testing.T) {
 	const shallBe = int(1 << 16)
 
-	bf = NewBloomFilter(float64(n*10), float64(7))
+	bf = NewBloomFilter2(float64(n*10), float64(7))
 
 	cnt := 0
 	for i := range wordlist1 {
-		hash := MemHash(wordlist1[i])
+		hash := hash(wordlist1[i])
 		if !bf.AddIfNotHas(hash) {
 			cnt++
 		}
@@ -58,12 +58,12 @@ func TestM_JSON(t *testing.T) {
 	Json := bf.JSONMarshal()
 
 	// create new bloomfilter from bloomfilter's JSON representation
-	bf2, err := JSONUnmarshal(Json)
+	bf2, err := JSONUnmarshal2(Json)
 	require.NoError(t, err)
 
 	cnt2 := 0
 	for i := range wordlist1 {
-		hash := MemHash(wordlist1[i])
+		hash := hash(wordlist1[i])
 		if !bf2.AddIfNotHas(hash) {
 			cnt2++
 		}
@@ -73,14 +73,14 @@ func TestM_JSON(t *testing.T) {
 
 func BenchmarkM_New(b *testing.B) {
 	for r := 0; r < b.N; r++ {
-		_ = NewBloomFilter(float64(n*10), float64(7))
+		_ = NewBloomFilter2(float64(n*10), float64(7))
 	}
 }
 
 func BenchmarkM_Clear(b *testing.B) {
-	bf = NewBloomFilter(float64(n*10), float64(7))
+	bf = NewBloomFilter2(float64(n*10), float64(7))
 	for i := range wordlist1 {
-		hash := MemHash(wordlist1[i])
+		hash := hash(wordlist1[i])
 		bf.Add(hash)
 	}
 	b.ResetTimer()
@@ -90,11 +90,11 @@ func BenchmarkM_Clear(b *testing.B) {
 }
 
 func BenchmarkM_Add(b *testing.B) {
-	bf = NewBloomFilter(float64(n*10), float64(7))
+	bf = NewBloomFilter2(float64(n*10), float64(7))
 	b.ResetTimer()
 	for r := 0; r < b.N; r++ {
 		for i := range wordlist1 {
-			hash := MemHash(wordlist1[i])
+			hash := hash(wordlist1[i])
 			bf.Add(hash)
 		}
 	}
@@ -105,7 +105,7 @@ func BenchmarkM_Has(b *testing.B) {
 	b.ResetTimer()
 	for r := 0; r < b.N; r++ {
 		for i := range wordlist1 {
-			hash := MemHash(wordlist1[i])
+			hash := hash(wordlist1[i])
 			bf.Has(hash)
 		}
 	}
