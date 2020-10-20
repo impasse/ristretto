@@ -41,14 +41,14 @@ func throw(s string)
 type dalloc struct {
 	pc uintptr
 	no int
-	sz int
+	sz int64
 }
 
 // Enabled via 'leak' build flag.
 var dallocsMu sync.Mutex
 var dallocs map[unsafe.Pointer]*dalloc
 
-func Calloc(n int) []byte {
+func Calloc(n int64) []byte {
 	if n == 0 {
 		return make([]byte, 0)
 	}
@@ -87,13 +87,13 @@ func Calloc(n int) []byte {
 			dallocsMu.Unlock()
 		}
 	}
-	atomic.AddInt64(&numBytes, int64(n))
+	atomic.AddInt64(&numBytes, n)
 	// Interpret the C pointer as a pointer to a Go array, then slice.
 	return (*[MaxArrayLen]byte)(uptr)[:n:n]
 }
 
 // CallocNoRef does the exact same thing as Calloc with jemalloc enabled.
-func CallocNoRef(n int) []byte {
+func CallocNoRef(n int64) []byte {
 	return Calloc(n)
 }
 
