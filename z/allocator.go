@@ -153,7 +153,7 @@ func (a *Allocator) Allocate(sz int) []byte {
 		return make([]byte, sz)
 	}
 	if len(a.buffers) == 0 {
-		buf := Calloc(a.pageSize)
+		buf := Calloc(int64(a.pageSize))
 		a.buffers = append(a.buffers, buf)
 	}
 
@@ -173,7 +173,7 @@ func (a *Allocator) Allocate(sz int) []byte {
 			a.pageSize = maxAlloc
 		}
 
-		buf := Calloc(a.pageSize)
+		buf := Calloc(int64(a.pageSize))
 		a.buffers = append(a.buffers, buf)
 		a.curBuf++
 		a.curIdx = 0

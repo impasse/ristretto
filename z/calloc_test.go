@@ -67,7 +67,7 @@ func BenchmarkAllocation(b *testing.B) {
 			r := rand.New(source)
 			for pb.Next() {
 				sz := r.Intn(100) << 10
-				x := Calloc(sz)
+				x := Calloc(int64(sz))
 				r.Read(x)
 				Free(x)
 			}

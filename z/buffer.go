@@ -39,12 +39,12 @@ import (
 // MaxSize can be set to limit the memory usage.
 type Buffer struct {
 	buf           []byte
-	offset        int
-	curSz         int
-	maxSz         int
+	offset        int64
+	curSz         int64
+	maxSz         int64
 	fd            *os.File
 	bufType       BufferType
-	autoMmapAfter int
+	autoMmapAfter int64
 }
 
 type BufferType int
@@ -69,7 +69,7 @@ const (
 const smallBufferSize = 64
 
 // Newbuffer is a helper utility, which creates a virtually unlimited Buffer in UseCalloc mode.
-func NewBuffer(sz int) *Buffer {
+func NewBuffer(sz int64) *Buffer {
 	buf, err := NewBufferWith(sz, 256<<30, UseCalloc)
 	if err != nil {
 		log.Fatalf("while creating buffer: %v", err)
@@ -87,12 +87,12 @@ func (b *Buffer) doMmap() error {
 		return errors.Wrapf(err, "while truncating %s to size: %d", fd.Name(), b.curSz)
 	}
 
-	buf, err := Mmap(fd, true, int64(b.maxSz)) // Mmap up to max size.
+	buf, err := Mmap(fd, true, b.maxSz) // Mmap up to max size.
 	if err != nil {
 		return errors.Wrapf(err, "while mmapping %s with size: %d", fd.Name(), b.maxSz)
 	}
 	if len(curBuf) > 0 {
-		assert(b.offset == copy(buf, curBuf[:b.offset]))
+		assert(b.offset == int64(copy(buf, curBuf[:b.offset])))
 		Free(curBuf)
 	}
 	b.buf = buf
@@ -104,7 +104,7 @@ func (b *Buffer) doMmap() error {
 // NewBufferWith would allocate a buffer of size sz upfront, with the total size of the buffer not
 // exceeding maxSz. Both sz and maxSz can be set to zero, in which case reasonable defaults would be
 // used. Buffer can't be used without initialization via NewBuffer.
-func NewBufferWith(sz, maxSz int, bufType BufferType) (*Buffer, error) {
+func NewBufferWith(sz, maxSz int64, bufType BufferType) (*Buffer, error) {
 	if sz == 0 {
 		sz = smallBufferSize
 	}
@@ -139,7 +139,7 @@ func (b *Buffer) IsEmpty() bool {
 }
 
 // Len would return the number of bytes written to the buffer so far.
-func (b *Buffer) Len() int {
+func (b *Buffer) Len() int64 {
 	return b.offset
 }
 
@@ -148,7 +148,7 @@ func (b *Buffer) Bytes() []byte {
 	return b.buf[1:b.offset]
 }
 
-func (b *Buffer) AutoMmapAfter(size int) {
+func (b *Buffer) AutoMmapAfter(size int64) {
 	b.autoMmapAfter = size
 }
 
@@ -156,7 +156,7 @@ func (b *Buffer) AutoMmapAfter(size int) {
 // would reallocate twice the size of current capacity + n, to ensure n bytes can be written to the
 // buffer without further allocation. In UseMmap mode, this might result in underlying file
 // expansion.
-func (b *Buffer) Grow(n int) {
+func (b *Buffer) Grow(n int64) {
 	// In this case, len and cap are the same.
 	if b.buf == nil {
 		panic("z.Buffer needs to be initialized before using")
@@ -192,7 +192,7 @@ func (b *Buffer) Grow(n int) {
 			b.buf = newBuf
 		}
 	case UseMmap:
-		if err := b.fd.Truncate(int64(b.curSz)); err != nil {
+		if err := b.fd.Truncate(b.curSz); err != nil {
 			log.Fatalf("While trying to truncate file %s to size: %d error: %v\n",
 				b.fd.Name(), b.curSz, err)
 		}
@@ -202,7 +202,7 @@ func (b *Buffer) Grow(n int) {
 // Allocate is a way to get a slice of size n back from the buffer. This slice can be directly
 // written to. Warning: Allocate is not thread-safe. The byte slice returned MUST be used before
 // further calls to Buffer.
-func (b *Buffer) Allocate(n int) []byte {
+func (b *Buffer) Allocate(n int64) []byte {
 	b.Grow(n)
 	off := b.offset
 	b.offset += n
@@ -211,13 +211,13 @@ func (b *Buffer) Allocate(n int) []byte {
 
 // AllocateOffset works the same way as allocate, but instead of returning a byte slice, it returns
 // the offset of the allocation.
-func (b *Buffer) AllocateOffset(n int) int {
+func (b *Buffer) AllocateOffset(n int64) int64 {
 	b.Grow(n)
 	b.offset += n
 	return b.offset - n
 }
 
-func (b *Buffer) writeLen(sz int) {
+func (b *Buffer) writeLen(sz int64) {
 	buf := b.Allocate(4)
 	binary.BigEndian.PutUint32(buf, uint32(sz))
 }
@@ -226,19 +226,19 @@ func (b *Buffer) writeLen(sz int) {
 // hence returning the slice of size sz. This can be used to allocate a lot of small buffers into
 // this big buffer.
 // Note that SliceAllocate should NOT be mixed with normal calls to Write.
-func (b *Buffer) SliceAllocate(sz int) []byte {
+func (b *Buffer) SliceAllocate(sz int64) []byte {
 	b.Grow(4 + sz)
 	b.writeLen(sz)
 	return b.Allocate(sz)
 }
 
 func (b *Buffer) WriteSlice(slice []byte) {
-	dst := b.SliceAllocate(len(slice))
+	dst := b.SliceAllocate(int64(len(slice)))
 	copy(dst, slice)
 }
 
 func (b *Buffer) SliceIterate(f func(slice []byte) error) error {
-	slice, next := []byte{}, 1
+	slice, next := []byte{}, int64(1)
 	for next != 0 {
 		slice, next = b.Slice(next)
 		if err := f(slice); err != nil {
@@ -250,14 +250,14 @@ func (b *Buffer) SliceIterate(f func(slice []byte) error) error {
 
 type LessFunc func(a, b []byte) bool
 type sortHelper struct {
-	offsets []int
+	offsets []int64
 	b       *Buffer
 	tmp     *Buffer
 	less    LessFunc
-	small   []int
+	small   []int64
 }
 
-func (s *sortHelper) sortSmall(start, end int) {
+func (s *sortHelper) sortSmall(start, end int64) {
 	s.tmp.Reset()
 	s.small = s.small[:0]
 	next := start
@@ -276,7 +276,7 @@ func (s *sortHelper) sortSmall(start, end int) {
 	for _, off := range s.small {
 		s.tmp.Write(rawSlice(s.b.buf[off:]))
 	}
-	assert(end-start == copy(s.b.buf[start:end], s.tmp.Bytes()))
+	assert(end-start == int64(copy(s.b.buf[start:end], s.tmp.Bytes())))
 }
 
 func assert(b bool) {
@@ -293,7 +293,7 @@ func check2(_ interface{}, err error) {
 	check(err)
 }
 
-func (s *sortHelper) merge(left, right []byte, start, end int) {
+func (s *sortHelper) merge(left, right []byte, start, end int64) {
 	if len(left) == 0 || len(right) == 0 {
 		return
 	}
@@ -306,12 +306,12 @@ func (s *sortHelper) merge(left, right []byte, start, end int) {
 	copyLeft := func() {
 		assert(len(ls) == copy(s.b.buf[start:], ls))
 		left = left[len(ls):]
-		start += len(ls)
+		start += int64(len(ls))
 	}
 	copyRight := func() {
 		assert(len(rs) == copy(s.b.buf[start:], rs))
 		right = right[len(rs):]
-		start += len(rs)
+		start += int64(len(rs))
 	}
 
 	for start < end {
@@ -359,7 +359,7 @@ func (s *sortHelper) sort(lo, hi int) []byte {
 func (b *Buffer) SortSlice(less func(left, right []byte) bool) {
 	b.SortSliceBetween(1, b.offset, less)
 }
-func (b *Buffer) SortSliceBetween(start, end int, less LessFunc) {
+func (b *Buffer) SortSliceBetween(start, end int64, less LessFunc) {
 	if start >= end {
 		return
 	}
@@ -367,7 +367,7 @@ func (b *Buffer) SortSliceBetween(start, end int, less LessFunc) {
 		panic("start can never be zero")
 	}
 
-	var offsets []int
+	var offsets []int64
 	next, count := start, 0
 	for next != 0 && next < end {
 		if count%1024 == 0 {
@@ -381,12 +381,12 @@ func (b *Buffer) SortSliceBetween(start, end int, less LessFunc) {
 		offsets = append(offsets, end)
 	}
 
-	szTmp := int(float64((end-start)/2) * 1.1)
+	szTmp := int64(float64((end-start)/2) * 1.1)
 	s := &sortHelper{
 		offsets: offsets,
 		b:       b,
 		less:    less,
-		small:   make([]int, 0, 1024),
+		small:   make([]int64, 0, 1024),
 		tmp:     NewBuffer(szTmp),
 	}
 	defer s.tmp.Release()
@@ -405,14 +405,14 @@ func rawSlice(buf []byte) []byte {
 }
 
 // Slice would return the slice written at offset.
-func (b *Buffer) Slice(offset int) ([]byte, int) {
+func (b *Buffer) Slice(offset int64) ([]byte, int64) {
 	if offset >= b.offset {
 		return nil, 0
 	}
 
 	sz := binary.BigEndian.Uint32(b.buf[offset:])
 	start := offset + 4
-	next := start + int(sz)
+	next := start + int64(sz)
 	res := b.buf[start:next]
 	if next >= b.offset {
 		next = 0
@@ -421,9 +421,9 @@ func (b *Buffer) Slice(offset int) ([]byte, int) {
 }
 
 // SliceOffsets is an expensive function. Use sparingly.
-func (b *Buffer) SliceOffsets() []int {
-	next := 1
-	var offsets []int
+func (b *Buffer) SliceOffsets() []int64 {
+	next := int64(1)
+	var offsets []int64
 	for next != 0 {
 		offsets = append(offsets, next)
 		_, next = b.Slice(next)
@@ -431,7 +431,7 @@ func (b *Buffer) SliceOffsets() []int {
 	return offsets
 }
 
-func (b *Buffer) Data(offset int) []byte {
+func (b *Buffer) Data(offset int64) []byte {
 	if offset > b.curSz {
 		panic("offset beyond current size")
 	}
@@ -439,9 +439,9 @@ func (b *Buffer) Data(offset int) []byte {
 }
 
 // Write would write p bytes to the buffer.
-func (b *Buffer) Write(p []byte) (n int, err error) {
-	b.Grow(len(p))
-	n = copy(b.buf[b.offset:], p)
+func (b *Buffer) Write(p []byte) (n int64, err error) {
+	b.Grow(int64(len(p)))
+	n = int64(copy(b.buf[b.offset:], p))
 	b.offset += n
 	return n, nil
 }

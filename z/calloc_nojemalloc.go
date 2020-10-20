@@ -14,7 +14,7 @@ import (
 // (eg: build without jemalloc tag).
 
 // Calloc allocates a slice of size n.
-func Calloc(n int) []byte {
+func Calloc(n int64) []byte {
 	return make([]byte, n)
 }
 
